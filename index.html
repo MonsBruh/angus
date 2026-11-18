@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Bye Bye Angus</title>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Bye Angus">
+  <meta name="theme-color" content="#1d2233">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="style.css?v=1">
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <header id="hud">
+    <div class="hp-wrap">
+      <div class="hp-name">ANGUS</div>
+      <div class="hp-bar"><div id="hpFill"></div></div>
+    </div>
+    <div class="stat"><span id="killCount">0</span><small>KOs</small></div>
+    <button id="bookBtn" class="hud-btn" aria-label="Ways discovered">📖<span id="wayCount">0/10</span></button>
+    <button id="soundBtn" class="hud-btn" aria-label="Sound">🔊</button>
+  </header>
+
+  <div id="banner" class="banner hidden">
+    <div id="bannerMain"></div>
+    <div id="bannerSub"></div>
+  </div>
+
+  <div id="hint" class="hint">Pick something below, then tap or drag Angus</div>
+
+  <nav id="tools"></nav>
+
+  <div id="book" class="book hidden">
+    <div class="book-card">
+      <div class="book-head">
+        <h2>Ways to beat Angus</h2>
+        <button id="bookClose" class="close" aria-label="Close">✕</button>
+      </div>
+      <p id="bookSummary" class="book-sum"></p>
+      <div id="bookGrid" class="book-grid"></div>
+      <button id="resetBtn" class="reset">Reset progress</button>
+    </div>
+  </div>
+
+  <script src="game.js?v=1"></script>
+</body>
+</html>
