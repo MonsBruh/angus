@@ -87,3 +87,4 @@ canvas#game { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 10
 .way.locked { opacity: .45; }
 .way.locked .ic { filter: grayscale(1) brightness(.4); }
 .reset { margin-top: 14px; width: 100%; border: 0; background: #ffffff14; color: #ff8a80; padding: 10px; border-radius: 12px; font-family: inherit; font-weight: 700; }
+#goreBtn.off { opacity: .35; filter: grayscale(1); }

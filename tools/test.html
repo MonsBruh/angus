@@ -21,6 +21,8 @@ f.onload = async () => {
       if (sc === 'fire') { E("weapon='fire';useWeapon(angus.pts[1].x, angus.pts[1].y)"); await wait(700); }
       if (sc === 'ice') { E("weapon='ice';useWeapon(angus.pts[1].x, angus.pts[1].y)"); await wait(400); }
       if (sc === 'bomb') { E("angus.hp=10;weapon='bomb';useWeapon(angus.pts[2].x+40, angus.pts[2].y)"); await wait(1550); }
+      if (sc === 'gorebomb') { E("angus.hp=10;weapon='bomb';useWeapon(angus.pts[2].x+40, angus.pts[2].y)"); await wait(2400); }
+      if (sc === 'gorepunch') { for (let i = 0; i < 12 && E('!angus.dead'); i++) { E("weapon='punch';useWeapon(angus.pts[0].x, angus.pts[0].y)"); await wait(500); } await wait(800); }
       if (sc === 'piano') { E("weapon='piano';useWeapon(angus.pts[2].x, ceilY+20)"); await wait(1100); }
       if (sc === 'hole') { E("weapon='hole';useWeapon(angus.pts[2].x+90, angus.pts[2].y-120)"); await wait(900); }
       if (sc === 'zap') { E("weapon='lightning';useWeapon(angus.pts[1].x, angus.pts[1].y)"); await wait(32); E('flash=0'); }

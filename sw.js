@@ -1,6 +1,6 @@
 // Caches the game so it opens and plays with no internet connection.
 // Bump VERSION (and APP_VERSION in game.js) whenever you change any file.
-const VERSION = 'angus-v1';
+const VERSION = 'angus-v2';
 const FILES = [
   './',
   'index.html',

@@ -1,6 +1,6 @@
 'use strict';
 // Bye Bye Angus — a slapstick ragdoll toy. Bump APP_VERSION (+ sw.js VERSION + ?v= in index.html) on every change.
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.1.0';
 const STORE_KEY = 'angus.v1';
 
 const WEAPONS = [
@@ -25,9 +25,9 @@ const BACK = ['I\'m back!', 'Round two?', 'Please no more', 'That was uncalled f
 function loadSave() {
   try {
     const d = JSON.parse(localStorage.getItem(STORE_KEY));
-    if (d && typeof d.kills === 'number') return { kills: d.kills, counts: d.counts || {}, muted: !!d.muted };
+    if (d && typeof d.kills === 'number') return { kills: d.kills, counts: d.counts || {}, muted: !!d.muted, gore: d.gore !== false };
   } catch (e) {}
-  return { kills: 0, counts: {}, muted: false };
+  return { kills: 0, counts: {}, muted: false, gore: true };
 }
 const save = loadSave();
 function persist() { try { localStorage.setItem(STORE_KEY, JSON.stringify(save)); } catch (e) {} }
@@ -128,10 +128,12 @@ function makeAngus(x, footY) {
     stun: 0.8, control: 0, hurtT: 0, frozen: 0, burn: 0, char: 0, zap: 0, hasBeanie: true,
     grab: null, flungBy: 'grab', speech: null, speechCD: 0, runDir: 1, hidden: false, flat: 0, vanish: null,
     lookX: x, lookY: footY - 6 * S, ghost: false, spawnT: 0,
+    limbs: { la: [1, 3, 4], ra: [1, 5, 6], ll: [2, 7, 8], rl: [2, 9, 10] }, neck: 1, stumps: [], pooled: false, blast: null,
   };
 }
 
 let angus = null;
+let decals = [];
 let objects = [], holes = [], particles = [], floaters = [], beanies = [], ashes = [], bolts = [], ghosts = [], fires = [];
 let weapon = 'grab';
 let shake = 0, flash = 0, flashColor = '#fff', time = 0;
@@ -147,20 +149,72 @@ function say(b, text, force) {
   b.speech = { text, t: 1.6 }; b.speechCD = 1.4;
 }
 
-function hurt(b, amt, wid, stun = 0) {
+const BLOODY = new Set(['punch', 'grab', 'bomb', 'rocket', 'boulder', 'piano']);
+function hurt(b, amt, wid, stun = 0, pos) {
   if (!b || b.dead || b.spawnT > 0) return;
   if (b.frozen > 0 && wid !== 'ice') amt *= 1.5;
   b.hp -= amt; b.hurtT = 0.45; b.flungBy = wid;
+  if (amt > 3 && BLOODY.has(wid) && b.frozen <= 0) { const p = pos || pick(b.pts.slice(0, 3)); bleed(p.x, p.y, amt); }
   if (stun) { b.stun = Math.max(b.stun, stun); }
   if (b.hp <= 0) { kill(b, wid); return; }
   if (amt > 4 && Math.random() < 0.55) say(b, b.burn > 0 ? 'HOT HOT HOT!' : b.frozen > 0 ? 'brrrr...' : pick(OUCH));
   updateHud();
 }
 
+// ---------- gore ----------
+function bleed(x, y, amt, dirX = 0, dirY = -0.3) {
+  if (!save.gore) return;
+  const n = clamp(Math.round(amt / 2), 3, 32);
+  for (let i = 0; i < n; i++) {
+    const a = rand(0, Math.PI * 2), v = rand(0.05, 0.45) * S * clamp(amt / 25, 0.6, 1.8);
+    particles.push({ kind: 'blood', x, y, vx: Math.cos(a) * v + dirX * S, vy: Math.sin(a) * v + dirY * S, life: rand(1.5, 2.5), max: 2.5, size: rand(0.1, 0.28) * S, g: 1 });
+  }
+}
+function addDecal(x, y, r, surface) {
+  decals.push({ x, y, r, surface, seed: Math.random() * 1000 });
+  if (decals.length > 240) decals.splice(0, decals.length - 240);
+}
+function newJoint(b, from) {
+  const q = b.pts[from];
+  b.pts.push({ x: q.x, y: q.y, px: q.px, py: q.py, r: 0.22 * S });
+  return b.pts.length - 1;
+}
+// Cut a limb (la, ra, ll, rl) or the head off. kx/ky = extra kick for the loose piece.
+function sever(b, part, kx = 0, ky = 0) {
+  if (!save.gore || b.hidden) return;
+  let piece, joint;
+  if (part === 'head') {
+    if (b.neck !== 1) return;
+    joint = 1;
+    const ni = newJoint(b, 1);
+    b.sticks = b.sticks.filter(st => !(st.a === 0 && (st.b === 1 || st.b === 2)));
+    b.sticks.push({ a: 0, b: ni, k: 1, len: 1.0 * S });
+    b.neck = ni; piece = [0, ni];
+    b.stumps.push(1, ni);
+  } else {
+    const L = b.limbs[part], home = (part === 'll' || part === 'rl') ? 2 : 1;
+    if (!L || L[0] !== home) return;
+    joint = home;
+    const ni = newJoint(b, joint);
+    const st = b.sticks.find(t => t.a === joint && t.b === L[1]);
+    if (st) st.a = ni;
+    L[0] = ni; piece = [ni, L[1], L[2]];
+    b.stumps.push(joint, ni);
+  }
+  for (const i of piece) { b.pts[i].px -= kx + rand(-0.2, 0.2) * S; b.pts[i].py -= ky + rand(-0.3, 0) * S; }
+  const j = b.pts[joint];
+  bleed(j.x, j.y, 40);
+}
+function severRandom(b, n, kx, ky, headChance) {
+  const parts = ['la', 'ra', 'll', 'rl'].sort(() => Math.random() - 0.5).slice(0, n);
+  for (const p of parts) sever(b, p, kx * rand(0.5, 1.2), ky * rand(0.5, 1.2));
+  if (Math.random() < headChance) sever(b, 'head', kx * rand(0.3, 1), ky * rand(0.8, 1.3));
+}
+
 function detachBeanie(b, vx, vy) {
   if (!b.hasBeanie) return;
   b.hasBeanie = false;
-  const h = b.pts[0], n = b.pts[1];
+  const h = b.pts[0], n = b.pts[b.neck];
   const a = Math.atan2(h.y - n.y, h.x - n.x) + Math.PI / 2;
   beanies.push({ x: h.x + Math.sin(a) * h.r * 0.5, y: h.y - Math.cos(a) * h.r * 0.5, vx, vy, rot: a, vr: rand(-0.3, 0.3), r: h.r, life: 30, char: b.char, gone: 0 });
   if (beanies.length > 7) beanies.shift();
@@ -193,6 +247,15 @@ function kill(b, wid) {
     if (b.vanish.hole.life !== undefined) b.vanish.hole.life = Math.max(b.vanish.hole.life, 1.8);
   }
   if (style === 'ko' && Math.random() < 0.5) detachBeanie(b, rand(-0.3, 0.3) * S, -0.4 * S);
+  if (save.gore && b.frozen <= 0) {
+    const bx = b.blast ? Math.sign(c.x - b.blast.x) || 1 : (Math.random() < 0.5 ? -1 : 1);
+    if (wid === 'bomb') severRandom(b, 3, bx * 0.6 * S, 0.8 * S, 0.6);
+    else if (wid === 'rocket') severRandom(b, 2, bx * 0.6 * S, 0.6 * S, 0.45);
+    else if (wid === 'punch') { if (Math.random() < 0.5) sever(b, 'head', bx * 0.5 * S, 0.5 * S); else bleed(h.x, h.y, 30); }
+    else if (wid === 'grab') severRandom(b, 1, 0.3 * S * bx, 0.4 * S, 0.25);
+    else if (wid === 'boulder' || wid === 'piano') { bleed(c.x, floorY - S, 90, 0, -0.4); if (Math.random() < 0.6) severRandom(b, 1, bx * 0.5 * S, 0.5 * S, 0); }
+    else if (wid === 'hole') bleed(c.x, c.y, 50);
+  }
   const way = WMAP[wid];
   showBanner('ANGUS ' + way.verb + '!', isNew ? `NEW WAY! ${foundCount()}/${WEAPONS.length} discovered` : `${way.icon} x${save.counts[wid]}`);
   if (isNew) Snd.ding();
@@ -292,18 +355,19 @@ function stepBody(b) {
   }
 
   // bounds with impact damage
-  let impact = 0;
+  let impact = 0, impactP = pts[2];
   for (const p of pts) {
-    const vx = p.x - p.px, vy = p.y - p.py;
+    const vx = p.x - p.px, vy = p.y - p.py, before = impact;
     if (p.y > floorY - p.r) { impact = Math.max(impact, vy); p.y = floorY - p.r; p.py = p.y + vy * 0.35; p.px = p.x - vx * 0.82; }
     if (p.y < ceilY + p.r) { impact = Math.max(impact, -vy); p.y = ceilY + p.r; p.py = p.y + vy * 0.35; }
     if (p.x < p.r) { impact = Math.max(impact, -vx); p.x = p.r; p.px = p.x + vx * 0.4; }
     if (p.x > W - p.r) { impact = Math.max(impact, vx); p.x = W - p.r; p.px = p.x + vx * 0.4; }
+    if (impact > before) impactP = p;
   }
   const thresh = (b.frozen > 0 ? 0.45 : 0.7) * S;
   if (impact > thresh && b.spawnT <= 0) {
     const dmg = (impact - thresh) / S * 22;
-    if (!b.dead) hurt(b, dmg, b.flungBy, 0.6 + dmg / 40);
+    if (!b.dead) hurt(b, dmg, b.flungBy, 0.6 + dmg / 40, impactP); else if (!b.hidden && b.style !== 'ash' && b.style !== 'shatter') bleed(impactP.x, impactP.y, dmg * 0.7);
     Snd.thud(clamp(impact / (2 * S), 0.3, 1));
     if (dmg > 10) { shake = Math.max(shake, dmg * 0.4); const c = pts[2]; stars(c.x, Math.min(c.y, floorY - S)); }
   }
@@ -330,6 +394,15 @@ function stepBody(b) {
 
   // fire patches ignite
   if (!b.dead && b.frozen <= 0) for (const f of fires) for (const p of pts) if (Math.abs(p.x - f.x) < 1.2 * S && p.y > floorY - 1.4 * S) { if (b.burn <= 0) say(b, 'HOT HOT HOT!', true); b.burn = Math.max(b.burn, 4); b.flungBy = 'fire'; }
+
+  // bleeding stumps + blood pool
+  if (save.gore && b.stumps.length && !b.hidden && b.deathT < 2.6) {
+    const p = pts[pick(b.stumps)];
+    if (Math.random() < 0.5) particles.push({ kind: 'blood', x: p.x, y: p.y, vx: rand(-0.15, 0.15) * S, vy: rand(-0.4, -0.1) * S * (1 - b.deathT / 3), life: 2, max: 2, size: rand(0.08, 0.2) * S, g: 1 });
+  }
+  if (save.gore && b.dead && !b.pooled && !b.hidden && BLOODY.has(b.method) && b.style !== 'shatter' && b.deathT > 0.6 && pts[2].y > floorY - 2.5 * S) {
+    b.pooled = true; decals.push({ x: pts[2].x, y: floorY, r: 0, grow: rand(2, 2.8) * S, surface: 'pool', seed: 0 });
+  }
 
   // death sequence
   if (b.dead) {
@@ -377,6 +450,7 @@ function explode(x, y, R, power, dmg, wid) {
       if (d < R) { const f = 1 - d / R; maxF = Math.max(maxF, f); p.px -= dx / d * f * power; p.py -= (dy / d - 0.6) * f * power; }
     }
     if (maxF > 0) {
+      b.blast = { x, y };
       b.char = Math.min(0.7, b.char + maxF * 0.4);
       if (maxF > 0.5) detachBeanie(b, rand(-0.5, 0.5) * S, -S);
       hurt(b, dmg * Math.min(1, maxF * 1.4), wid, 1.4);
@@ -409,7 +483,7 @@ function useWeapon(x, y) {
       let dir = Math.sign(p.x - x) || Math.sign(c.x - W / 2) * -1 || 1;
       if (Math.abs(p.x - x) < 0.2 * S) dir = Math.random() < 0.5 ? -1 : 1;
       impulse(b, dir * 0.9 * S, -0.45 * S, i, 0.35);
-      hurt(b, rand(9, 14), 'punch', 0.7);
+      hurt(b, rand(9, 14), 'punch', 0.7, p);
       Snd.punch(); shake = Math.max(shake, 6);
       floaters.push({ x, y: y - 0.5 * S, text: pick(['POW!', 'BAM!', 'WHACK!', 'BONK!', 'SMACK!']), life: 0.7, size: 1, color: '#fff' });
       particles.push({ kind: 'emoji', ch: '👊', x, y, vx: 0, vy: 0, life: 0.25, max: 0.25, size: 1.6 * S, g: 0 });
@@ -542,7 +616,7 @@ function stepObjects() {
         }
         if (touched) {
           const speed = Math.hypot(o.vx, o.vy);
-          if (isP && !o.hit && o.vy > 0.2 * S) { o.hit = true; hurt(b, 100, 'piano', 2); Snd.thud(1); shake = 16; floaters.push({ x: o.x, y: o.y - o.h, text: 'CRUNCH!', life: 1, size: 1.3, color: '#fff' }); }
+          if (isP && !o.hit && o.vy > 0.2 * S) { o.hit = true; hurt(b, 100, 'piano', 2, b.pts[0]); Snd.thud(1); shake = 16; floaters.push({ x: o.x, y: o.y - o.h, text: 'CRUNCH!', life: 1, size: 1.3, color: '#fff' }); }
           else if (!isP && o.hitCD <= 0 && speed > 0.15 * S) {
             o.hitCD = 0.4; const dmg = o.vy > 0.3 * S ? 55 : 12;
             hurt(b, dmg, 'boulder', 1.5); Snd.thud(1); shake = Math.max(shake, dmg / 4);
@@ -593,9 +667,16 @@ function stepWorld() {
     p.life -= DT; p.x += p.vx; p.y += p.vy; p.vy += (p.g || 0) * 0.03 * S;
     if (p.kind === 'smoke') { p.vx *= 0.97; p.vy *= 0.97; }
     if (p.vr) p.rot += p.vr;
+    if (p.kind === 'blood') {
+      if (p.y >= floorY - 1) { addDecal(p.x, floorY, p.size * rand(1.3, 2.6), 'floor'); p.life = 0; }
+      else if (p.x <= 1 || p.x >= W - 1) { addDecal(clamp(p.x, 0, W), p.y, p.size * rand(1.2, 2.2), 'wall'); p.life = 0; }
+      else if (p.y <= ceilY + 1) { addDecal(p.x, ceilY, p.size * rand(1.2, 2.2), 'wall'); p.life = 0; }
+      else if (p.life <= DT && Math.random() < 0.6) addDecal(p.x, p.y, p.size * rand(0.9, 1.6), 'wall');
+    }
     if (p.bounce && p.y > floorY - 2) { p.y = floorY - 2; p.vy *= -0.3; p.vx *= 0.7; p.vr *= 0.6; }
   }
   particles = particles.filter(p => p.life > 0);
+  for (const d of decals) if (d.grow && d.r < d.grow) d.r += DT * 1.4 * S;
   if (particles.length > 600) particles.splice(0, particles.length - 600);
   for (const f of floaters) { f.life -= DT; f.y -= 0.03 * S; }
   floaters = floaters.filter(f => f.life > 0);
@@ -693,7 +774,7 @@ function drawAngus(b) {
     const sh = clamp(1 - (floorY - P[2].y) / (10 * S), 0.2, 1);
     ctx.fillStyle = `rgba(0,0,0,${0.25 * sh})`; ctx.beginPath(); ctx.ellipse(P[2].x, floorY + 2, 1.6 * S * sh, 0.25 * S, 0, 0, 7); ctx.fill();
   }
-  if (skeleton) {
+  if (skeleton && !b.stumps.length) {
     ctx.fillStyle = 'rgba(30,60,120,0.85)';
     P.forEach(p => { ctx.beginPath(); circ(p.x, p.y, p.r * 1.6); ctx.fill(); });
     const bone = '#fff', w = 0.16 * S;
@@ -706,10 +787,11 @@ function drawAngus(b) {
   }
   // legs
   const lw = 0.55 * S;
-  limb(P[2], P[7], P[8], col('jeans'), lw); limb(P[2], P[9], P[10], col('jeans'), lw);
+  const Lm = b.limbs;
+  limb(P[Lm.ll[0]], P[7], P[8], col('jeans'), lw); limb(P[Lm.rl[0]], P[9], P[10], col('jeans'), lw);
   [8, 10].forEach(i => { const k = i - 1; const dir = Math.sign(P[i].x - P[k].x) || (i === 8 ? -1 : 1); ctx.fillStyle = col('shoe'); ctx.beginPath(); ctx.ellipse(P[i].x + dir * 0.15 * S, P[i].y + 0.05 * S, 0.42 * S, 0.24 * S, 0, 0, 7); ctx.fill(); });
   // back arm
-  limb(P[1], P[3], P[4], col('hoodie'), 0.5 * S);
+  limb(P[Lm.la[0]], P[3], P[4], col('hoodie'), 0.5 * S);
   ctx.fillStyle = col('skin'); ctx.beginPath(); circ(P[4].x, P[4].y, 0.26 * S); ctx.fill();
   // torso (hoodie)
   limb(P[1], P[2], null, col('hoodie'), 1.35 * S);
@@ -721,8 +803,16 @@ function drawAngus(b) {
     ctx.beginPath(); ctx.moveTo(-0.18 * S, -0.95 * S); ctx.lineTo(-0.2 * S, -0.35 * S); ctx.moveTo(0.18 * S, -0.95 * S); ctx.lineTo(0.2 * S, -0.35 * S); ctx.stroke();
     ctx.restore(); }
   // front arm
-  limb(P[1], P[5], P[6], col('hoodie'), 0.5 * S);
+  limb(P[Lm.ra[0]], P[5], P[6], col('hoodie'), 0.5 * S);
   ctx.fillStyle = col('skin'); ctx.beginPath(); circ(P[6].x, P[6].y, 0.26 * S); ctx.fill();
+  // neck stub on a loose head
+  if (b.neck !== 1) limb(P[0], P[b.neck], null, col('skin'), 0.45 * S);
+  // stumps
+  for (const i of b.stumps) {
+    const p = P[i];
+    ctx.fillStyle = '#b3101f'; ctx.beginPath(); circ(p.x, p.y, 0.3 * S); ctx.fill();
+    ctx.fillStyle = '#f2e6d8'; ctx.beginPath(); circ(p.x, p.y, 0.1 * S); ctx.fill();
+  }
   // head
   drawHead(b, col);
   // ice block
@@ -739,7 +829,7 @@ function drawAngus(b) {
 }
 
 function drawHead(b, col) {
-  const h = b.pts[0], n = b.pts[1], r = h.r;
+  const h = b.pts[0], n = b.pts[b.neck], r = h.r;
   const a = Math.atan2(h.y - n.y, h.x - n.x) + Math.PI / 2;
   ctx.save(); ctx.translate(h.x, h.y); ctx.rotate(a);
   // ears
@@ -885,6 +975,11 @@ function drawParticles() {
       ctx.globalAlpha = Math.min(1, t * 2); ctx.fillStyle = p.color;
       ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.beginPath(); ctx.moveTo(0, -p.size); ctx.lineTo(p.size * 0.6, p.size * 0.5); ctx.lineTo(-p.size * 0.5, p.size * 0.4); ctx.closePath(); ctx.fill(); ctx.restore();
     }
+    else if (p.kind === 'blood') {
+      ctx.globalAlpha = 1; ctx.fillStyle = '#c40f24';
+      const a = Math.atan2(p.vy, p.vx), sp = Math.min(2.2, 1 + Math.hypot(p.vx, p.vy) / (0.3 * S));
+      ctx.beginPath(); ctx.ellipse(p.x, p.y, p.size * sp, p.size, a, 0, 7); ctx.fill();
+    }
     else if (p.kind === 'star') { ctx.globalAlpha = t; drawStar(p.x, p.y, p.size, '#ffd166', p.rot); }
     else if (p.kind === 'ring') { ctx.globalAlpha = t; ctx.strokeStyle = '#fff'; ctx.lineWidth = 6 * t; ctx.beginPath(); circ(p.x, p.y, p.size * (1 - t * 0.7)); ctx.stroke(); }
     else if (p.kind === 'emoji') { ctx.globalAlpha = t; ctx.font = `${p.size}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(p.ch, p.x, p.y); }
@@ -947,6 +1042,23 @@ function drawFloaters() {
   ctx.globalAlpha = 1;
 }
 
+function drawDecals() {
+  for (const d of decals) {
+    ctx.fillStyle = d.surface === 'pool' ? '#8e0b1b' : '#a5101f';
+    ctx.globalAlpha = d.surface === 'pool' ? 0.92 : 0.85;
+    ctx.beginPath();
+    if (d.surface === 'pool') ctx.ellipse(d.x, d.y + 2, d.r, d.r * 0.22, 0, 0, 7);
+    else if (d.surface === 'floor') ctx.ellipse(d.x, d.y + 2, d.r, d.r * 0.3, 0, 0, 7);
+    else {
+      circ(d.x, d.y, d.r);
+      for (let i = 0; i < 4; i++) { const a = d.seed + i * 1.7, rr = d.r * (1.1 + ((d.seed * (i + 1)) % 1) * 0.9); circ(d.x + Math.cos(a) * rr, d.y + Math.sin(a) * rr, d.r * 0.3); }
+      ctx.rect(d.x - d.r * 0.15, d.y, d.r * 0.3, d.r * (1 + (d.seed % 2)));
+    }
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
 function drawAshes() {
   for (const a of ashes) {
     ctx.globalAlpha = Math.min(1, a.life);
@@ -961,6 +1073,7 @@ function render() {
   const sx = shake > 0.5 ? rand(-shake, shake) : 0, sy = shake > 0.5 ? rand(-shake, shake) : 0;
   ctx.translate(sx, sy);
   drawRoom();
+  drawDecals();
   drawHoles();
   drawAshes();
   for (const f of fires) { ctx.fillStyle = 'rgba(255,120,40,0.25)'; ctx.beginPath(); ctx.ellipse(f.x, floorY, 1.2 * S, 0.3 * S, 0, 0, 7); ctx.fill(); }
@@ -1044,6 +1157,13 @@ document.getElementById('resetBtn').addEventListener('click', () => {
   if (!confirm('Reset all progress?')) return;
   save.kills = 0; save.counts = {}; persist(); updateHud(); renderTools(); openBook();
 });
+const goreBtn = document.getElementById('goreBtn');
+function syncGoreBtn() { goreBtn.classList.toggle('off', !save.gore); goreBtn.setAttribute('aria-label', save.gore ? 'Gore on' : 'Gore off'); }
+goreBtn.addEventListener('click', () => {
+  save.gore = !save.gore; persist(); syncGoreBtn();
+  if (!save.gore) { decals = []; particles = particles.filter(p => p.kind !== 'blood'); }
+  showHint(save.gore ? 'Gore ON' : 'Gore OFF (room cleaned up)');
+});
 const soundBtn = document.getElementById('soundBtn');
 function syncSoundBtn() { soundBtn.textContent = save.muted ? '🔇' : '🔊'; }
 soundBtn.addEventListener('click', () => { save.muted = !save.muted; persist(); Snd.init(); Snd.setMuted(save.muted); syncSoundBtn(); });
@@ -1104,7 +1224,7 @@ function frame(now) {
 }
 
 function start() {
-  renderTools(); syncSoundBtn();
+  renderTools(); syncSoundBtn(); syncGoreBtn();
   layout();
   angus = makeAngus(W / 2, floorY);
   angus.stun = 0; angus.control = 1;
