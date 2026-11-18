@@ -1,6 +1,6 @@
 'use strict';
 // Bye Bye Angus — a slapstick ragdoll toy. Bump APP_VERSION (+ sw.js VERSION + ?v= in index.html) on every change.
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 const STORE_KEY = 'angus.v1';
 
 const WEAPONS = [
@@ -111,7 +111,7 @@ const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 function mix(c1, c2, t) { return 'rgb(' + [0, 1, 2].map(i => Math.round(c1[i] + (c2[i] - c1[i]) * t)).join(',') + ')'; }
 const C = {
   skin: [255, 205, 168], hoodie: [76, 132, 255], jeans: [52, 70, 120], shoe: [40, 40, 48],
-  beanie: [230, 70, 60], beanie2: [255, 240, 230], hair: [120, 70, 40], char: [36, 32, 32], ice: [170, 225, 255],
+  beanie: [28, 28, 34], beanie2: [255, 105, 180], hair: [120, 70, 40], char: [36, 32, 32], ice: [170, 225, 255],
 };
 
 // ---------- the ragdoll ----------
@@ -709,8 +709,8 @@ function drawRoom() {
   const fx = W * 0.22, fy = wy + 0.4 * S;
   ctx.fillStyle = '#c99a5b'; ctx.fillRect(fx - 1.2 * S, fy, 2.4 * S, 1.8 * S);
   ctx.fillStyle = '#f4ead8'; ctx.fillRect(fx - 1 * S, fy + 0.2 * S, 2 * S, 1.4 * S);
-  ctx.fillStyle = '#e6463c'; ctx.beginPath(); ctx.arc(fx, fy + 1.1 * S, 0.45 * S, Math.PI, 0); ctx.fill();
-  ctx.fillStyle = '#fff'; ctx.beginPath(); circ(fx, fy + 0.58 * S, 0.14 * S); ctx.fill();
+  ctx.fillStyle = '#1c1c22'; ctx.beginPath(); ctx.arc(fx, fy + 1.1 * S, 0.45 * S, Math.PI, 0); ctx.fill(); ctx.fillStyle = '#ff69b4'; ctx.fillRect(fx - 0.4 * S, fy + 0.85 * S, 0.8 * S, 0.07 * S);
+  ctx.fillStyle = '#ff69b4'; ctx.beginPath(); circ(fx, fy + 0.58 * S, 0.14 * S); ctx.fill();
   // floor
   const fg = ctx.createLinearGradient(0, floorY, 0, H);
   fg.addColorStop(0, '#8a5a3c'); fg.addColorStop(1, '#5e3a25');
@@ -722,17 +722,18 @@ function drawRoom() {
 
 function drawBeanie(x, y, rot, r, charAmt) {
   ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.translate(0, -0.2 * r);
-  const main = mix(C.beanie, C.char, charAmt * 0.8), band = mix([200, 50, 45], C.char, charAmt * 0.8), stripe = mix(C.beanie2, C.char, charAmt * 0.8);
+  const main = mix(C.beanie, C.char, charAmt * 0.8), band = mix([18, 18, 22], C.char, charAmt * 0.8), stripe = mix(C.beanie2, C.char, charAmt * 0.8);
   // dome
   ctx.fillStyle = main;
   ctx.beginPath(); ctx.ellipse(0, -0.25 * r, 1.04 * r, 1.0 * r, 0, Math.PI, 0); ctx.closePath(); ctx.fill();
   // stripe
   ctx.save(); ctx.beginPath(); ctx.ellipse(0, -0.25 * r, 1.04 * r, 1.0 * r, 0, Math.PI, 0); ctx.clip();
-  ctx.fillStyle = stripe; ctx.fillRect(-1.2 * r, -0.85 * r, 2.4 * r, 0.18 * r); ctx.restore();
+  ctx.fillStyle = stripe; [-1.05, -0.8, -0.55].forEach(y => ctx.fillRect(-1.2 * r, y * r, 2.4 * r, 0.12 * r)); ctx.restore();
   // folded band
   ctx.fillStyle = band;
   roundRect(-1.12 * r, -0.42 * r, 2.24 * r, 0.42 * r, 0.16 * r); ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,0.15)'; ctx.lineWidth = Math.max(1, r * 0.06);
+  ctx.fillStyle = stripe; ctx.fillRect(-1.1 * r, -0.25 * r, 2.2 * r, 0.09 * r);
+  ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.lineWidth = Math.max(1, r * 0.06);
   for (let i = -4; i <= 4; i++) { ctx.beginPath(); ctx.moveTo(i * 0.24 * r, -0.38 * r); ctx.lineTo(i * 0.24 * r, -0.04 * r); ctx.stroke(); }
   // pompom
   ctx.fillStyle = stripe; ctx.beginPath(); circ(0, -1.3 * r, 0.3 * r); ctx.fill();
@@ -845,11 +846,9 @@ function drawHead(b, col) {
   } else {
     ctx.beginPath(); ctx.moveTo(-0.9 * r, -0.35 * r); ctx.quadraticCurveTo(-0.5 * r, -0.05 * r, -0.2 * r, -0.4 * r); ctx.quadraticCurveTo(0.2 * r, -0.1 * r, 0.6 * r, -0.4 * r); ctx.lineTo(0.9 * r, -0.4 * r); ctx.lineTo(0.9 * r, -0.5 * r); ctx.lineTo(-0.9 * r, -0.5 * r); ctx.fill();
   }
-  // cheeks + freckles
+  // cheeks
   ctx.fillStyle = 'rgba(255,110,110,0.25)';
   ctx.beginPath(); circ(-0.55 * r, 0.35 * r, 0.18 * r); circ(0.55 * r, 0.35 * r, 0.18 * r); ctx.fill();
-  ctx.fillStyle = 'rgba(150,80,50,0.5)';
-  [[-0.6, 0.22], [-0.48, 0.3], [-0.62, 0.38], [0.6, 0.22], [0.48, 0.3], [0.62, 0.38]].forEach(([x, y]) => { ctx.beginPath(); circ(x * r, y * r, 0.035 * r); ctx.fill(); });
   // eyes
   const ex = 0.36 * r, ey = 0.02 * r;
   ctx.strokeStyle = '#222'; ctx.fillStyle = '#222'; ctx.lineWidth = Math.max(1.5, 0.09 * r); ctx.lineCap = 'round';
