@@ -15,6 +15,13 @@ f.onload = async () => {
     E("save.kills=0;save.counts={};");
     log.push('loaded, time=' + E('time.toFixed(2)')); out();
     const mode = location.hash.slice(1) || 'all';
+    if (mode === 'dbg-balloon') {
+      await wait(1500); E('angus.spawnT=0;angus.stun=0');
+      E("weapon='balloon';useWeapon(angus.pts[1].x, angus.pts[1].y)");
+      log.push('balloon=' + E('JSON.stringify(angus.balloon && {idx:angus.balloon.idx})') + ' ceilY=' + E('Math.round(ceilY)') + ' floorY=' + E('Math.round(floorY)'));
+      for (let i = 0; i < 40; i++) { await wait(100); log.push(i + ' hipY=' + E('Math.round(angus.pts[2].y)') + ' handY=' + E('angus.balloon?Math.round(angus.pts[angus.balloon.idx].y):"-"') + ' drop=' + E('angus.balloonDrop') + ' hp=' + E('Math.round(angus.hp)') + ' stun=' + E('angus.stun.toFixed(1)')); }
+      out(); return;
+    }
     if (mode.startsWith('shot-')) {
       const sc = mode.slice(5);
       await wait(1500); E('angus.spawnT=0;angus.stun=0');
@@ -23,6 +30,14 @@ f.onload = async () => {
       if (sc === 'bomb') { E("angus.hp=10;weapon='bomb';useWeapon(angus.pts[2].x+40, angus.pts[2].y)"); await wait(1550); }
       if (sc === 'gorebomb') { E("angus.hp=10;weapon='bomb';useWeapon(angus.pts[2].x+40, angus.pts[2].y)"); await wait(2400); }
       if (sc === 'gorepunch') { for (let i = 0; i < 12 && E('!angus.dead'); i++) { E("weapon='punch';useWeapon(angus.pts[0].x, angus.pts[0].y)"); await wait(500); } await wait(800); }
+      if (sc === 'shark') { E("weapon='shark';useWeapon(angus.pts[2].x, floorY-10)"); await wait(250); }
+      if (sc === 'ufo') { E("weapon='ufo';useWeapon(angus.pts[2].x, ceilY+30)"); await wait(1000); }
+      if (sc === 'truck') { E("weapon='truck';useWeapon(10, floorY-50)"); await wait(400); }
+      if (sc === 'bees') { E("weapon='bees';useWeapon(angus.pts[1].x, angus.pts[1].y)"); await wait(2500); }
+      if (sc === 'acid') { E("angus.hp=30;weapon='acid';useWeapon(angus.pts[1].x, angus.pts[1].y)"); await wait(2200); }
+      if (sc === 'saw') { E("weapon='saw';useWeapon(20, ceilY+40)"); await wait(700); }
+      if (sc === 'balloon') { E("weapon='balloon';useWeapon(angus.pts[1].x, angus.pts[1].y)"); await wait(1200); }
+      if (sc === 'firework') { E("weapon='firework';useWeapon(angus.pts[1].x, angus.pts[1].y)"); await wait(1000); }
       if (sc === 'piano') { E("weapon='piano';useWeapon(angus.pts[2].x, ceilY+20)"); await wait(1100); }
       if (sc === 'hole') { E("weapon='hole';useWeapon(angus.pts[2].x+90, angus.pts[2].y-120)"); await wait(900); }
       if (sc === 'zap') { E("weapon='lightning';useWeapon(angus.pts[1].x, angus.pts[1].y)"); await wait(32); E('flash=0'); }
@@ -30,7 +45,7 @@ f.onload = async () => {
       E('render()'); w.document.getElementById('hint').classList.add('gone');
       log.push('shot ' + sc + ' errors ' + JSON.stringify(errs)); out(); return;
     }
-    const weapons = ['punch', 'bomb', 'rocket', 'boulder', 'piano', 'lightning', 'fire', 'ice', 'hole', 'grab'];
+    const weapons = ['punch', 'bomb', 'rocket', 'boulder', 'piano', 'lightning', 'fire', 'ice', 'hole', 'grab', 'saw', 'truck', 'shark', 'ufo', 'acid', 'bees', 'balloon', 'firework'];
     for (const wid of weapons) {
       if (mode !== 'all' && mode !== wid) continue;
       await wait(3800);
@@ -46,8 +61,9 @@ f.onload = async () => {
           E('angus.grab.tx=0;angus.grab.ty=100'); await wait(30); E("angus.grab=null;angus.flungBy='grab'");
           await wait(900); continue;
         }
-        E(['boulder', 'piano'].includes(wid) ? 'useWeapon(angus.pts[2].x, ceilY+20)' : 'useWeapon(angus.pts[1].x, angus.pts[1].y)');
-        await wait(wid === 'fire' || wid === 'hole' ? 2500 : 900);
+        const where = { boulder: 'angus.pts[2].x, ceilY+20', piano: 'angus.pts[2].x, ceilY+20', ufo: 'angus.pts[2].x, ceilY+30', saw: '20, ceilY+40', truck: '10, floorY-50', shark: 'angus.pts[2].x, floorY-10' }[wid] || 'angus.pts[1].x, angus.pts[1].y';
+        E('useWeapon(' + where + ')');
+        await wait({ fire: 2500, hole: 2500, ufo: 4000, acid: 2500, bees: 3500, balloon: 5000, firework: 3000, saw: 2000, truck: 2000 }[wid] || 900);
       }
       log.push(wid + ': uses=' + uses + ' dead=' + E('angus.dead') + ' method=' + E('angus.method') + ' style=' + E('angus.style') + ' kills ' + before + '->' + E('save.kills'));
       out();
